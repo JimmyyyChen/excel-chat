@@ -40,4 +40,10 @@ export const useStyles = makeStyles({
   inputField: {
     flex: 1,
   },
+  recommendedPrompts: {
+    display: "flex",
+    gap: "8px",
+    marginBottom: "10px",
+    flexWrap: "wrap",
+  },
 });
