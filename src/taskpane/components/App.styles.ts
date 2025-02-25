@@ -2,10 +2,11 @@ import { makeStyles } from "@fluentui/react-components";
 
 export const useStyles = makeStyles({
   root: {
-    minHeight: "100vh",
     display: "flex",
     flexDirection: "column",
+    height: "100vh",
     padding: "16px",
+    boxSizing: "border-box",
   },
   chatContainer: {
     flex: 1,
@@ -17,20 +18,18 @@ export const useStyles = makeStyles({
   },
   messageRow: {
     display: "flex",
-    marginBottom: "8px",
+    width: "100%",
   },
   userMessage: {
+    alignSelf: "flex-end",
+    backgroundColor: "#e6f7ff",
     marginLeft: "auto",
-    backgroundColor: "#e3f2fd",
-    padding: "8px 12px",
-    borderRadius: "18px 18px 0 18px",
     maxWidth: "80%",
   },
   botMessage: {
+    alignSelf: "flex-start",
+    backgroundColor: "#f0f0f0",
     marginRight: "auto",
-    backgroundColor: "#f5f5f5",
-    padding: "8px 12px",
-    borderRadius: "18px 18px 18px 0",
     maxWidth: "80%",
   },
   inputContainer: {
@@ -43,7 +42,32 @@ export const useStyles = makeStyles({
   recommendedPrompts: {
     display: "flex",
     gap: "8px",
-    marginBottom: "10px",
+    marginBottom: "16px",
     flexWrap: "wrap",
+  },
+  messageImage: {
+    maxWidth: "100%",
+    maxHeight: "200px",
+  },
+  messageTable: {
+    borderCollapse: "collapse",
+    width: "100%",
+    "& th, & td": {
+      border: "1px solid #ddd",
+      padding: "8px",
+      textAlign: "left",
+    },
+    "& th": {
+      backgroundColor: "#f2f2f2",
+      fontWeight: "bold",
+    },
+    "& tr:nth-child(even)": {
+      backgroundColor: "#f9f9f9",
+    },
+  },
+  tableActions: {
+    marginTop: "8px",
+    display: "flex",
+    justifyContent: "flex-end",
   },
 });
