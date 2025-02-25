@@ -84,6 +84,110 @@ async function getSortedTableData(): Promise<string[][]> {
   return tableData;
 }
 
+async function createScatterChartInSheet() {
+  await Excel.run(async (context) => {
+    const { chartDataRange } = await prepareChartData(context);
+    const sheet = context.workbook.worksheets.getActiveWorksheet();
+    const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.auto);
+    formatScatterChart(chart);
+    chart.setPosition("B35", "I50");
+    await context.sync();
+  });
+}
+
+async function prepareChartData(
+  context: Excel.RequestContext
+): Promise<{ chartDataRange: Excel.Range; tempRangeName: string }> {
+  const table = await getFirstTable(context);
+  table.load(["columns", "name"]);
+  await context.sync();
+
+  // Find the Sales and Costs columns
+  const salesColumn = table.columns.getItemOrNullObject("Sales");
+  const costsColumn = table.columns.getItemOrNullObject("Costs");
+  salesColumn.load("index");
+  costsColumn.load("index");
+  await context.sync();
+
+  if (salesColumn.isNullObject || costsColumn.isNullObject) {
+    throw new Error("Could not find 'Sales' or 'Costs' columns in the table");
+  }
+
+  const dataRange = table.getDataBodyRange();
+  dataRange.load("values");
+  await context.sync();
+
+  const sheet = context.workbook.worksheets.getActiveWorksheet();
+  const values = dataRange.values;
+
+  const tempRangeName = "TempChartData";
+  let tempRange = sheet.names.getItemOrNullObject(tempRangeName);
+  await context.sync();
+
+  if (!tempRange.isNullObject) {
+    tempRange.delete();
+    await context.sync();
+  }
+
+  const chartDataRange = sheet.getRange("Z1").getResizedRange(values.length - 1, 1);
+  const chartData = values.map((row) => {
+    return [Number(row[salesColumn.index]) / 1000, Number(row[costsColumn.index]) / 1000];
+  });
+  chartDataRange.values = chartData;
+  sheet.names.add(tempRangeName, chartDataRange);
+
+  return { chartDataRange, tempRangeName };
+}
+
+function formatScatterChart(chart: Excel.Chart) {
+  chart.title.text = "'Costs' by 'Sales'";
+  chart.legend.visible = false;
+
+  chart.axes.valueAxis.title.text = "Costs\nThousands";
+  chart.axes.valueAxis.title.visible = true;
+  chart.axes.categoryAxis.title.text = "Sales\nThousands";
+  chart.axes.categoryAxis.title.visible = true;
+
+  chart.axes.valueAxis.majorGridlines.visible = true;
+  chart.axes.categoryAxis.majorGridlines.visible = true;
+}
+
+async function createSalesCostsScatterChart(): Promise<string> {
+  let imageBase64 = "";
+
+  await Excel.run(async (context) => {
+    const { chartDataRange, tempRangeName } = await prepareChartData(context);
+
+    const sheet = context.workbook.worksheets.getActiveWorksheet();
+    const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.auto);
+    formatScatterChart(chart);
+
+    chart.series.load("items");
+    await context.sync();
+
+    if (chart.series.items.length > 0) {
+      const series = chart.series.items[0];
+      series.markerStyle = Excel.ChartMarkerStyle.circle;
+    }
+
+    // Get the chart as an image
+    const chartImage = chart.getImage();
+    await context.sync();
+    imageBase64 = "data:image/png;base64," + chartImage.value;
+
+    // Delete the chart after getting the image
+    chart.delete();
+
+    // Clean up the temporary data
+    sheet.names.getItem(tempRangeName).delete();
+    chartDataRange.clear();
+
+    await context.sync();
+  });
+
+  return imageBase64;
+}
+
 const App: React.FC<AppProps> = () => {
   const styles = useStyles();
   const [messages, setMessages] = React.useState<ChatMessage[]>([
@@ -139,12 +243,23 @@ const App: React.FC<AppProps> = () => {
         };
       }
     } else if (normalizedInput === "Create a scatter plot of sales and costs") {
-      botResponse = {
-        id: messages.length + 2,
-        type: "image",
-        content: "assets/chart-example.png", // Example image path
-        isUser: false,
-      };
+      try {
+        const chartImageBase64 = await createSalesCostsScatterChart();
+
+        botResponse = {
+          id: messages.length + 2,
+          type: "image",
+          content: chartImageBase64,
+          isUser: false,
+        };
+      } catch (error) {
+        botResponse = {
+          id: messages.length + 2,
+          type: "text",
+          content: `Error creating chart: ${error.toString()}`,
+          isUser: false,
+        };
+      }
     } else if (normalizedInput === "Insert a column of profits") {
       botResponse = {
         id: messages.length + 2,
@@ -198,8 +313,21 @@ const App: React.FC<AppProps> = () => {
       case "text":
         return <Text>{message.content as string}</Text>;
 
-      case "image":
-        return <Image src={message.content as string} alt="Chat image" className={styles.messageImage} />;
+      case "image": {
+        const isChartImage = (message.content as string).startsWith("data:image");
+        return (
+          <div>
+            <Image src={message.content as string} alt="Chat image" className={styles.messageImage} />
+            {isChartImage && (
+              <div className={styles.tableActions}>
+                <Button appearance="primary" size="small" onClick={handleInsertChart}>
+                  插入
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      }
 
       case "table": {
         const tableData = message.content as string[][];
@@ -225,7 +353,7 @@ const App: React.FC<AppProps> = () => {
             </table>
             <div className={styles.tableActions}>
               <Button appearance="primary" size="small" onClick={handleApplySortToWorksheet}>
-                Apply to Worksheet
+                应用操作
               </Button>
             </div>
           </div>
@@ -249,12 +377,31 @@ const App: React.FC<AppProps> = () => {
     setInputText(promptText);
   };
 
+  // Add a handler for the insert chart button
+  const handleInsertChart = async () => {
+    try {
+      await createScatterChartInSheet();
+
+      const successMessage: ChatMessage = {
+        id: messages.length + 1,
+        type: "text",
+        content: "散点图已成功插入到工作表中！",
+        isUser: false,
+      };
+      setMessages((prev) => [...prev, successMessage]);
+    } catch (error) {
+      const errorMessage: ChatMessage = {
+        id: messages.length + 1,
+        type: "text",
+        content: `错误: ${error.toString()}`,
+        isUser: false,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    }
+  };
+
   return (
     <div className={styles.root}>
-      <Text weight="semibold" size={500} as="h1">
-        Chat Interface
-      </Text>
-
       <div className={styles.chatContainer} ref={chatContainerRef}>
         {messages.map((message) => (
           <div key={message.id} className={styles.messageRow}>
