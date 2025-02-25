@@ -174,6 +174,42 @@ async function createSalesCostsScatterChart(): Promise<string> {
   return imageBase64;
 }
 
+async function addProfitColumn(): Promise<void> {
+  await Excel.run(async (context) => {
+    // Get the first table
+    const table = await getFirstTable(context);
+
+    // Get the table data to determine row count
+    const dataRange = table.getDataBodyRange();
+    dataRange.load("rowCount");
+    await context.sync();
+
+    // Create the formula to calculate profit
+    const profitFormula = "=[@Sales]-[@Costs]";
+
+    // Create an array with the header and formulas for each row
+    const columnData = [["Profits"]];
+
+    // Add formula for each row in the table
+    for (let i = 0; i < dataRange.rowCount; i++) {
+      columnData.push([profitFormula]);
+    }
+
+    // Add the column with the formula
+    const newColumn = table.columns.add(null, columnData);
+
+    // Format the column as integers (no decimals)
+    const profitRange = newColumn.getDataBodyRange();
+    profitRange.numberFormat = [["0"]];
+
+    // Auto-fit the columns for better visibility
+    const sheet = context.workbook.worksheets.getActiveWorksheet();
+    sheet.getUsedRange().format.autofitColumns();
+
+    await context.sync();
+  });
+}
+
 const App: React.FC<AppProps> = () => {
   const styles = useStyles();
   const [messages, setMessages] = React.useState<ChatMessage[]>([
@@ -249,12 +285,9 @@ const App: React.FC<AppProps> = () => {
     } else if (normalizedInput === "Insert a column of profits") {
       botResponse = {
         id: messages.length + 2,
-        type: "table",
-        content: [
-          ["Product", "Sales", "Cost", "Profit"],
-          ["Item A", "$1200", "$800", "$400"],
-          ["Item B", "$950", "$600", "$350"],
-        ],
+        type: "text",
+        content:
+          "I'll add a Profit column using the formula: Profit = Sales - Cost. This will calculate the profit for each product.",
         isUser: false,
       };
     } else {
@@ -294,10 +327,45 @@ const App: React.FC<AppProps> = () => {
     }
   };
 
+  const handleAddProfitColumn = async () => {
+    try {
+      await addProfitColumn();
+
+      const successMessage: ChatMessage = {
+        id: messages.length + 1,
+        type: "text",
+        content: "Profit column added successfully!",
+        isUser: false,
+      };
+      setMessages((prev) => [...prev, successMessage]);
+    } catch (error) {
+      const errorMessage: ChatMessage = {
+        id: messages.length + 1,
+        type: "text",
+        content: `Error: ${error.toString()}`,
+        isUser: false,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    }
+  };
+
   const renderMessageContent = (message: ChatMessage) => {
     switch (message.type) {
-      case "text":
-        return <Text>{message.content as string}</Text>;
+      case "text": {
+        const isProfitMessage = (message.content as string).includes("Profit = Sales - Cost");
+        return (
+          <div>
+            <Text>{message.content as string}</Text>
+            {isProfitMessage && (
+              <div className={styles.tableActions} style={{ marginTop: "8px" }}>
+                <Button appearance="primary" size="small" onClick={handleAddProfitColumn}>
+                  插入公式
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      }
 
       case "image": {
         const isChartImage = (message.content as string).startsWith("data:image");
