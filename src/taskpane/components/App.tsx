@@ -156,32 +156,18 @@ async function createSalesCostsScatterChart(): Promise<string> {
   let imageBase64 = "";
 
   await Excel.run(async (context) => {
-    const { chartDataRange, tempRangeName } = await prepareChartData(context);
-
+    const { chartDataRange } = await prepareChartData(context);
     const sheet = context.workbook.worksheets.getActiveWorksheet();
     const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.auto);
     formatScatterChart(chart);
-
-    chart.series.load("items");
     await context.sync();
 
-    if (chart.series.items.length > 0) {
-      const series = chart.series.items[0];
-      series.markerStyle = Excel.ChartMarkerStyle.circle;
-    }
-
-    // Get the chart as an image
     const chartImage = chart.getImage();
     await context.sync();
     imageBase64 = "data:image/png;base64," + chartImage.value;
 
     // Delete the chart after getting the image
     chart.delete();
-
-    // Clean up the temporary data
-    sheet.names.getItem(tempRangeName).delete();
-    chartDataRange.clear();
-
     await context.sync();
   });
 
