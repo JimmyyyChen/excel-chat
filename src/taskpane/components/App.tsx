@@ -2,6 +2,8 @@ import * as React from "react";
 import { Button, Input, Text, Card, Image } from "@fluentui/react-components";
 import { useStyles } from "./App.styles";
 /* global Excel */
+/* global clearInterval, setInterval, setTimeout, NodeJS */
+
 interface AppProps {}
 
 interface ChatMessage {
@@ -9,6 +11,7 @@ interface ChatMessage {
   type: "text" | "table" | "image";
   content: string | string[][] | string; // text content, table data, or image path
   isUser: boolean;
+  isLoading?: boolean; // 新增加载状态标志
 }
 
 async function sortTableBySales(context: Excel.RequestContext, table: Excel.Table): Promise<void> {
@@ -214,23 +217,17 @@ const App: React.FC<AppProps> = () => {
   const styles = useStyles();
   const [messages, setMessages] = React.useState<ChatMessage[]>([
     { id: 1, type: "text", content: "Hello! How can I help you today?", isUser: false },
-    {
-      id: 2,
-      type: "table",
-      content: [
-        ["Product", "Sales", "Cost"],
-        ["Item A", "$1200", "$800"],
-        ["Item B", "$950", "$600"],
-      ],
-      isUser: false,
-    },
-    { id: 3, type: "image", content: "assets/logo-filled.png", isUser: false },
   ]);
   const [inputText, setInputText] = React.useState("");
+  const [isProcessing, setIsProcessing] = React.useState(false); // 新增处理状态
   const chatContainerRef = React.useRef(null);
+  const loadingDotsIntervalRef = React.useRef<NodeJS.Timeout | null>(null); // 用于存储定时器引用
+
+  // 添加一个模拟延迟的函数
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const handleSendMessage = async () => {
-    if (inputText.trim() === "") return;
+    if (inputText.trim() === "" || isProcessing) return;
 
     // Add user message
     const newUserMessage: ChatMessage = {
@@ -240,10 +237,37 @@ const App: React.FC<AppProps> = () => {
       isUser: true,
     };
 
-    setMessages([...messages, newUserMessage]);
-    setInputText("");
+    // 添加一个加载中的消息
+    const loadingMessage: ChatMessage = {
+      id: messages.length + 2,
+      type: "text",
+      content: "Processing",
+      isUser: false,
+      isLoading: true,
+    };
 
-    // Check for the specific message and respond accordingly
+    setMessages([...messages, newUserMessage, loadingMessage]);
+    setInputText("");
+    setIsProcessing(true);
+
+    // 创建一个更新加载消息的函数
+    let dots = 0;
+    const updateLoadingMessage = () => {
+      dots = (dots + 1) % 4;
+      const dotsText = ".".repeat(dots);
+
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) => (msg.isLoading ? { ...msg, content: `Processing${dotsText}` } : msg))
+      );
+    };
+
+    // 启动定时器，每500毫秒更新一次加载消息
+    loadingDotsIntervalRef.current = setInterval(updateLoadingMessage, 500);
+
+    // 等待3秒
+    await sleep(3000);
+
+    // 检查for the specific message and respond accordingly
     let botResponse: ChatMessage;
     const normalizedInput = inputText.trim().replace(/\.$/, ""); // remove the dot
     if (normalizedInput === "Sort the table by sales in descending order") {
@@ -299,8 +323,26 @@ const App: React.FC<AppProps> = () => {
       };
     }
 
-    setMessages((prev) => [...prev, botResponse]);
+    // 清除定时器
+    if (loadingDotsIntervalRef.current) {
+      clearInterval(loadingDotsIntervalRef.current);
+      loadingDotsIntervalRef.current = null;
+    }
+
+    // 移除加载消息并添加实际响应
+    setMessages((prevMessages) => prevMessages.filter((msg) => !msg.isLoading).concat(botResponse));
+
+    setIsProcessing(false);
   };
+
+  // 清理定时器
+  React.useEffect(() => {
+    return () => {
+      if (loadingDotsIntervalRef.current) {
+        clearInterval(loadingDotsIntervalRef.current);
+      }
+    };
+  }, []);
 
   const handleApplySortToWorksheet = async () => {
     try {
@@ -350,6 +392,11 @@ const App: React.FC<AppProps> = () => {
   };
 
   const renderMessageContent = (message: ChatMessage) => {
+    // 如果是加载中的消息，显示加载动画
+    if (message.isLoading) {
+      return <Text>{message.content}</Text>;
+    }
+
     switch (message.type) {
       case "text": {
         const isProfitMessage = (message.content as string).includes("Profit = Sales - Cost");
@@ -471,6 +518,7 @@ const App: React.FC<AppProps> = () => {
           appearance="outline"
           size="small"
           onClick={() => handlePromptClick("Sort the table by sales in descending order")}
+          disabled={isProcessing}
         >
           Sort table by sales
         </Button>
@@ -478,10 +526,16 @@ const App: React.FC<AppProps> = () => {
           appearance="outline"
           size="small"
           onClick={() => handlePromptClick("Create a scatter plot of sales and costs")}
+          disabled={isProcessing}
         >
           Create scatter plot
         </Button>
-        <Button appearance="outline" size="small" onClick={() => handlePromptClick("Insert a column of profits")}>
+        <Button
+          appearance="outline"
+          size="small"
+          onClick={() => handlePromptClick("Insert a column of profits")}
+          disabled={isProcessing}
+        >
           Insert profits column
         </Button>
       </div>
@@ -492,13 +546,14 @@ const App: React.FC<AppProps> = () => {
           value={inputText}
           onChange={(_e, data) => setInputText(data.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (e.key === "Enter" && !isProcessing) {
               handleSendMessage();
             }
           }}
           placeholder="Type your message here..."
+          disabled={isProcessing}
         />
-        <Button appearance="primary" onClick={handleSendMessage}>
+        <Button appearance="primary" onClick={handleSendMessage} disabled={isProcessing}>
           Send
         </Button>
       </div>
