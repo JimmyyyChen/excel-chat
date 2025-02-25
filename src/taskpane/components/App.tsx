@@ -1,6 +1,6 @@
 import * as React from "react";
-import { makeStyles } from "@fluentui/react-components";
 import { Button, Input, Text, Card } from "@fluentui/react-components";
+import { useStyles } from "./App.styles";
 
 interface AppProps {}
 
@@ -9,48 +9,6 @@ interface ChatMessage {
   text: string;
   isUser: boolean;
 }
-
-const useStyles = makeStyles({
-  root: {
-    minHeight: "100vh",
-    display: "flex",
-    flexDirection: "column",
-    padding: "16px",
-  },
-  chatContainer: {
-    flex: 1,
-    overflowY: "auto",
-    marginBottom: "16px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-  },
-  messageRow: {
-    display: "flex",
-    marginBottom: "8px",
-  },
-  userMessage: {
-    marginLeft: "auto",
-    backgroundColor: "#e3f2fd",
-    padding: "8px 12px",
-    borderRadius: "18px 18px 0 18px",
-    maxWidth: "80%",
-  },
-  botMessage: {
-    marginRight: "auto",
-    backgroundColor: "#f5f5f5",
-    padding: "8px 12px",
-    borderRadius: "18px 18px 18px 0",
-    maxWidth: "80%",
-  },
-  inputContainer: {
-    display: "flex",
-    gap: "8px",
-  },
-  inputField: {
-    flex: 1,
-  },
-});
 
 const App: React.FC<AppProps> = () => {
   const styles = useStyles();
@@ -75,7 +33,12 @@ const App: React.FC<AppProps> = () => {
 
     // Check for the specific message and respond accordingly
     let botResponseText = "";
-    if (inputText.trim() === "Sort the table by sales in descending order.") {
+    const normalizedInput = inputText.trim().replace(/\.$/, ""); // remove the dot
+    if (normalizedInput === "Sort the table by sales in descending order") {
+      botResponseText = "ok";
+    } else if (normalizedInput === "Create a scatter plot of sales and costs") {
+      botResponseText = "ok";
+    } else if (normalizedInput === "Insert a column of profits") {
       botResponseText = "ok";
     } else {
       botResponseText = "目前暂不支持，请重新输入";
