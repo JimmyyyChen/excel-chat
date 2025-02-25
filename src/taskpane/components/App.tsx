@@ -434,24 +434,26 @@ const App: React.FC<AppProps> = () => {
         const tableData = message.content as string[][];
         return (
           <div>
-            <table className={styles.messageTable}>
-              <thead>
-                <tr>
-                  {tableData[0].map((header, index) => (
-                    <th key={index}>{header}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tableData.slice(1).map((row, rowIndex) => (
-                  <tr key={rowIndex}>
-                    {row.map((cell, cellIndex) => (
-                      <td key={cellIndex}>{cell}</td>
+            <div className={styles.tableContainer}>
+              <table className={styles.messageTable}>
+                <thead>
+                  <tr>
+                    {tableData[0].map((header, index) => (
+                      <th key={index}>{header}</th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tableData.slice(1).map((row, rowIndex) => (
+                    <tr key={rowIndex}>
+                      {row.map((cell, cellIndex) => (
+                        <td key={cellIndex}>{cell}</td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <div className={styles.tableActions}>
               <Button appearance="primary" size="small" onClick={handleApplySortToWorksheet}>
                 应用操作

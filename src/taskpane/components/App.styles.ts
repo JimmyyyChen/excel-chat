@@ -70,4 +70,11 @@ export const useStyles = makeStyles({
     display: "flex",
     justifyContent: "flex-end",
   },
+  tableContainer: {
+    maxHeight: "200px",
+    overflowY: "auto",
+    marginBottom: "8px",
+    border: "1px solid #e0e0e0",
+    borderRadius: "4px",
+  },
 });
