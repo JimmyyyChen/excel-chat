@@ -133,8 +133,23 @@ async function createSalesCostsScatterChart(): Promise<string> {
 
   await Excel.run(async (context) => {
     const chartDataRange = await prepareChartData(context);
-    const sheet = context.workbook.worksheets.getActiveWorksheet();
-    const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.columns);
+
+    // Create a temporary sheet for the chart
+    const tempSheetName = `TempChartSheet_${Date.now()}`;
+    const tempSheet = context.workbook.worksheets.add(tempSheetName);
+
+    // Copy the data to the temp sheet
+    const dataValues = chartDataRange.load("values");
+    await context.sync();
+
+    const tempRange = tempSheet
+      .getRange("A1")
+      .getResizedRange(dataValues.values.length - 1, dataValues.values[0].length - 1);
+    tempRange.values = dataValues.values;
+    await context.sync();
+
+    // Create chart on the temp sheet
+    const chart = tempSheet.charts.add(Excel.ChartType.xyscatter, tempRange, Excel.ChartSeriesBy.columns);
     formatScatterChart(chart);
     await context.sync();
 
@@ -142,7 +157,7 @@ async function createSalesCostsScatterChart(): Promise<string> {
     await context.sync();
     imageBase64 = "data:image/png;base64," + chartImage.value;
 
-    chart.delete();
+    tempSheet.delete();
     await context.sync();
   });
 
@@ -436,7 +451,7 @@ const App: React.FC<AppProps> = () => {
       addMessage({
         id: messages.length + 1,
         type: "text",
-        content: "散点图已成功插入到工作表中！",
+        content: "The chart has been inserted into the worksheet.",
         isUser: false,
       });
     } catch (error) {
