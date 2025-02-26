@@ -4,6 +4,10 @@ import { useStyles } from "./App.styles";
 /* global Excel */
 /* global clearInterval, setInterval, setTimeout, NodeJS */
 
+// Processing time in milliseconds (0 = no delay)
+// const PROCESSING_DELAY_MS = 3000;
+const PROCESSING_DELAY_MS = 0;
+
 interface AppProps {}
 
 interface ChatMessage {
@@ -87,20 +91,7 @@ async function getSortedTableData(): Promise<string[][]> {
   return tableData;
 }
 
-async function createScatterChartInSheet() {
-  await Excel.run(async (context) => {
-    const { chartDataRange } = await prepareChartData(context);
-    const sheet = context.workbook.worksheets.getActiveWorksheet();
-    const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.auto);
-    formatScatterChart(chart);
-    chart.setPosition("B35", "I50");
-    await context.sync();
-  });
-}
-
-async function prepareChartData(
-  context: Excel.RequestContext
-): Promise<{ chartDataRange: Excel.Range; tempRangeName: string }> {
+async function prepareChartData(context: Excel.RequestContext): Promise<Excel.Range> {
   const table = await getFirstTable(context);
   table.load(["columns", "name"]);
   await context.sync();
@@ -116,52 +107,56 @@ async function prepareChartData(
     throw new Error("Could not find 'Sales' or 'Costs' columns in the table");
   }
 
-  const dataRange = table.getDataBodyRange();
-  dataRange.load("values");
+  // Get the data range for both columns
+  const salesRange = salesColumn.getDataBodyRange();
+  const costsRange = costsColumn.getDataBodyRange();
+  // Load the address property before using it
+  salesRange.load("address");
+  costsRange.load("address");
   await context.sync();
 
+  // Create a chart source range that includes both columns
   const sheet = context.workbook.worksheets.getActiveWorksheet();
-  const values = dataRange.values;
+  const chartRange = sheet.getRange(`${salesRange.address}:${costsRange.address}`);
 
-  const tempRangeName = "TempChartData";
-  let tempRange = sheet.names.getItemOrNullObject(tempRangeName);
-  await context.sync();
-
-  if (!tempRange.isNullObject) {
-    tempRange.delete();
-    await context.sync();
-  }
-
-  const chartDataRange = sheet.getRange("Z1").getResizedRange(values.length - 1, 1);
-  const chartData = values.map((row) => {
-    return [Number(row[salesColumn.index]) / 1000, Number(row[costsColumn.index]) / 1000];
-  });
-  chartDataRange.values = chartData;
-  sheet.names.add(tempRangeName, chartDataRange);
-
-  return { chartDataRange, tempRangeName };
+  return chartRange;
 }
 
 function formatScatterChart(chart: Excel.Chart) {
   chart.title.text = "'Costs' by 'Sales'";
   chart.legend.visible = false;
 
-  chart.axes.valueAxis.title.text = "Costs\nThousands";
+  chart.axes.valueAxis.title.text = "Costs";
   chart.axes.valueAxis.title.visible = true;
-  chart.axes.categoryAxis.title.text = "Sales\nThousands";
+  chart.axes.categoryAxis.title.text = "Sales";
   chart.axes.categoryAxis.title.visible = true;
 
   chart.axes.valueAxis.majorGridlines.visible = true;
   chart.axes.categoryAxis.majorGridlines.visible = true;
+
+  // Format axis labels to show values in thousands
+  chart.axes.valueAxis.numberFormat = "#,##0,K";
+  chart.axes.categoryAxis.numberFormat = "#,##0,K";
+}
+
+async function createScatterChartInSheet() {
+  await Excel.run(async (context) => {
+    const chartDataRange = await prepareChartData(context);
+    const sheet = context.workbook.worksheets.getActiveWorksheet();
+    const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.columns);
+    formatScatterChart(chart);
+    chart.setPosition("B35", "I50");
+    await context.sync();
+  });
 }
 
 async function createSalesCostsScatterChart(): Promise<string> {
   let imageBase64 = "";
 
   await Excel.run(async (context) => {
-    const { chartDataRange } = await prepareChartData(context);
+    const chartDataRange = await prepareChartData(context);
     const sheet = context.workbook.worksheets.getActiveWorksheet();
-    const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.auto);
+    const chart = sheet.charts.add(Excel.ChartType.xyscatter, chartDataRange, Excel.ChartSeriesBy.columns);
     formatScatterChart(chart);
     await context.sync();
 
@@ -261,11 +256,14 @@ const App: React.FC<AppProps> = () => {
       );
     };
 
-    // 启动定时器，每500毫秒更新一次加载消息
-    loadingDotsIntervalRef.current = setInterval(updateLoadingMessage, 500);
+    // Only start the loading animation if there's a delay
+    if (PROCESSING_DELAY_MS > 0) {
+      // 启动定时器，每500毫秒更新一次加载消息
+      loadingDotsIntervalRef.current = setInterval(updateLoadingMessage, 500);
 
-    // 等待3秒
-    await sleep(3000);
+      // 等待设定的延迟时间
+      await sleep(PROCESSING_DELAY_MS);
+    }
 
     // 检查for the specific message and respond accordingly
     let botResponse: ChatMessage;
