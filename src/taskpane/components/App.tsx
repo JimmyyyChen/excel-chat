@@ -5,8 +5,7 @@ import { useStyles } from "./App.styles";
 /* global clearInterval, setInterval, setTimeout, NodeJS */
 
 // Processing time in milliseconds (0 = no delay)
-// const PROCESSING_DELAY_MS = 3000;
-const PROCESSING_DELAY_MS = 0;
+const PROCESSING_DELAY_MS = 3000;
 
 interface AppProps {}
 
@@ -15,7 +14,7 @@ interface ChatMessage {
   type: "text" | "table" | "image";
   content: string | string[][] | string; // text content, table data, or image path
   isUser: boolean;
-  isLoading?: boolean; // 新增加载状态标志
+  isLoading?: boolean;
 }
 
 async function sortTableBySales(context: Excel.RequestContext, table: Excel.Table): Promise<void> {
@@ -26,14 +25,7 @@ async function sortTableBySales(context: Excel.RequestContext, table: Excel.Tabl
   if (salesColumn.isNullObject) {
     throw new Error("No 'sales' column found in the table");
   }
-
-  const sortFields = [
-    {
-      key: salesColumn.index,
-      ascending: false,
-    },
-  ];
-  table.sort.apply(sortFields);
+  table.sort.apply([{ key: salesColumn.index, ascending: false }]);
   await context.sync();
 }
 
@@ -61,20 +53,15 @@ async function getSortedTableData(): Promise<string[][]> {
     const tempSheetName = `TempSheet_${Date.now()}`;
     const tempSheet = context.workbook.worksheets.add(tempSheetName);
 
-    // Copy the source table
     const sourceRange = sourceTable.getRange();
     sourceRange.load(["values", "rowCount", "columnCount"]);
     await context.sync();
-
-    // Create a new table with the same data
     const tempTable = tempSheet.tables.add(
       tempSheet.getRange("A1").getResizedRange(sourceRange.rowCount - 1, sourceRange.columnCount - 1),
       true
     );
     tempTable.getRange().values = sourceRange.values;
     await context.sync();
-
-    // Sort the temporary table
     await sortTableBySales(context, tempTable);
     const tempRange = tempTable.getRange();
     tempRange.load("values");
@@ -83,7 +70,6 @@ async function getSortedTableData(): Promise<string[][]> {
     // Convert to string array for our message
     tableData = tempRange.values.map((row) => row.map((cell) => (cell !== null ? String(cell) : "")));
 
-    // Delete the temporary worksheet
     tempSheet.delete();
     await context.sync();
   });
@@ -95,8 +81,6 @@ async function prepareChartData(context: Excel.RequestContext): Promise<Excel.Ra
   const table = await getFirstTable(context);
   table.load(["columns", "name"]);
   await context.sync();
-
-  // Find the Sales and Costs columns
   const salesColumn = table.columns.getItemOrNullObject("Sales");
   const costsColumn = table.columns.getItemOrNullObject("Costs");
   salesColumn.load("index");
@@ -106,19 +90,13 @@ async function prepareChartData(context: Excel.RequestContext): Promise<Excel.Ra
   if (salesColumn.isNullObject || costsColumn.isNullObject) {
     throw new Error("Could not find 'Sales' or 'Costs' columns in the table");
   }
-
-  // Get the data range for both columns
   const salesRange = salesColumn.getDataBodyRange();
   const costsRange = costsColumn.getDataBodyRange();
-  // Load the address property before using it
   salesRange.load("address");
   costsRange.load("address");
   await context.sync();
-
-  // Create a chart source range that includes both columns
   const sheet = context.workbook.worksheets.getActiveWorksheet();
   const chartRange = sheet.getRange(`${salesRange.address}:${costsRange.address}`);
-
   return chartRange;
 }
 
@@ -134,7 +112,7 @@ function formatScatterChart(chart: Excel.Chart) {
   chart.axes.valueAxis.majorGridlines.visible = true;
   chart.axes.categoryAxis.majorGridlines.visible = true;
 
-  // Format axis labels to show values in thousands
+  // show values in thousands
   chart.axes.valueAxis.numberFormat = "#,##0,K";
   chart.axes.categoryAxis.numberFormat = "#,##0,K";
 }
@@ -164,7 +142,6 @@ async function createSalesCostsScatterChart(): Promise<string> {
     await context.sync();
     imageBase64 = "data:image/png;base64," + chartImage.value;
 
-    // Delete the chart after getting the image
     chart.delete();
     await context.sync();
   });
@@ -174,26 +151,16 @@ async function createSalesCostsScatterChart(): Promise<string> {
 
 async function addProfitColumn(): Promise<void> {
   await Excel.run(async (context) => {
-    // Get the first table
     const table = await getFirstTable(context);
-
-    // Get the table data to determine row count
     const dataRange = table.getDataBodyRange();
     dataRange.load("rowCount");
     await context.sync();
 
-    // Create the formula to calculate profit
     const profitFormula = "=[@Sales]-[@Costs]";
-
-    // Create an array with the header and formulas for each row
     const columnData = [["Profits"]];
-
-    // Add formula for each row in the table
     for (let i = 0; i < dataRange.rowCount; i++) {
       columnData.push([profitFormula]);
     }
-
-    // Add the column with the formula
     const newColumn = table.columns.add(null, columnData);
 
     // Format the column as integers (no decimals)
@@ -214,58 +181,52 @@ const App: React.FC<AppProps> = () => {
     { id: 1, type: "text", content: "Hello! How can I help you today?", isUser: false },
   ]);
   const [inputText, setInputText] = React.useState("");
-  const [isProcessing, setIsProcessing] = React.useState(false); // 新增处理状态
+  const [isProcessing, setIsProcessing] = React.useState(false);
   const chatContainerRef = React.useRef(null);
-  const loadingDotsIntervalRef = React.useRef<NodeJS.Timeout | null>(null); // 用于存储定时器引用
+  const loadingDotsIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  // 添加一个模拟延迟的函数
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const addMessage = (message: ChatMessage) => {
+    setMessages((prev) => [...prev, message]);
+  };
 
   const handleSendMessage = async () => {
     if (inputText.trim() === "" || isProcessing) return;
 
     // Add user message
-    const newUserMessage: ChatMessage = {
+    addMessage({
       id: messages.length + 1,
       type: "text",
       content: inputText,
       isUser: true,
-    };
+    });
 
-    // 添加一个加载中的消息
-    const loadingMessage: ChatMessage = {
+    // Add a loading message
+    addMessage({
       id: messages.length + 2,
       type: "text",
       content: "Processing",
       isUser: false,
       isLoading: true,
-    };
+    });
 
-    setMessages([...messages, newUserMessage, loadingMessage]);
     setInputText("");
     setIsProcessing(true);
 
-    // 创建一个更新加载消息的函数
     let dots = 0;
     const updateLoadingMessage = () => {
       dots = (dots + 1) % 4;
-      const dotsText = ".".repeat(dots);
-
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) => (msg.isLoading ? { ...msg, content: `Processing${dotsText}` } : msg))
+      setMessages((prev) =>
+        prev.map((msg) => (msg.isLoading ? { ...msg, content: `Processing${".".repeat(dots)}` } : msg))
       );
     };
 
-    // Only start the loading animation if there's a delay
     if (PROCESSING_DELAY_MS > 0) {
-      // 启动定时器，每500毫秒更新一次加载消息
       loadingDotsIntervalRef.current = setInterval(updateLoadingMessage, 500);
-
-      // 等待设定的延迟时间
       await sleep(PROCESSING_DELAY_MS);
     }
 
-    // 检查for the specific message and respond accordingly
     let botResponse: ChatMessage;
     const normalizedInput = inputText.trim().replace(/\.$/, ""); // remove the dot
     if (normalizedInput === "Sort the table by sales in descending order") {
@@ -321,19 +282,15 @@ const App: React.FC<AppProps> = () => {
       };
     }
 
-    // 清除定时器
     if (loadingDotsIntervalRef.current) {
       clearInterval(loadingDotsIntervalRef.current);
       loadingDotsIntervalRef.current = null;
     }
-
-    // 移除加载消息并添加实际响应
-    setMessages((prevMessages) => prevMessages.filter((msg) => !msg.isLoading).concat(botResponse));
+    setMessages((prev) => prev.filter((msg) => !msg.isLoading).concat(botResponse));
 
     setIsProcessing(false);
   };
 
-  // 清理定时器
   React.useEffect(() => {
     return () => {
       if (loadingDotsIntervalRef.current) {
@@ -349,21 +306,19 @@ const App: React.FC<AppProps> = () => {
         await sortTableBySales(context, table);
       });
 
-      const successMessage: ChatMessage = {
+      addMessage({
         id: messages.length + 1,
         type: "text",
         content: "Table sorted successfully!",
         isUser: false,
-      };
-      setMessages((prev) => [...prev, successMessage]);
+      });
     } catch (error) {
-      const errorMessage: ChatMessage = {
+      addMessage({
         id: messages.length + 1,
         type: "text",
         content: `Error: ${error.toString()}`,
         isUser: false,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      });
     }
   };
 
@@ -371,26 +326,23 @@ const App: React.FC<AppProps> = () => {
     try {
       await addProfitColumn();
 
-      const successMessage: ChatMessage = {
+      addMessage({
         id: messages.length + 1,
         type: "text",
         content: "Profit column added successfully!",
         isUser: false,
-      };
-      setMessages((prev) => [...prev, successMessage]);
+      });
     } catch (error) {
-      const errorMessage: ChatMessage = {
+      addMessage({
         id: messages.length + 1,
         type: "text",
         content: `Error: ${error.toString()}`,
         isUser: false,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      });
     }
   };
 
   const renderMessageContent = (message: ChatMessage) => {
-    // 如果是加载中的消息，显示加载动画
     if (message.isLoading) {
       return <Text>{message.content}</Text>;
     }
@@ -473,33 +425,35 @@ const App: React.FC<AppProps> = () => {
     }
   }, [messages]);
 
-  // Function to handle clicking on a recommended prompt button
   const handlePromptClick = (promptText: string) => {
     setInputText(promptText);
   };
 
-  // Add a handler for the insert chart button
   const handleInsertChart = async () => {
     try {
       await createScatterChartInSheet();
 
-      const successMessage: ChatMessage = {
+      addMessage({
         id: messages.length + 1,
         type: "text",
         content: "散点图已成功插入到工作表中！",
         isUser: false,
-      };
-      setMessages((prev) => [...prev, successMessage]);
+      });
     } catch (error) {
-      const errorMessage: ChatMessage = {
+      addMessage({
         id: messages.length + 1,
         type: "text",
         content: `错误: ${error.toString()}`,
         isUser: false,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      });
     }
   };
+
+  const promptOptions = [
+    { text: "Sort table by sales", prompt: "Sort the table by sales in descending order" },
+    { text: "Create scatter plot", prompt: "Create a scatter plot of sales and costs" },
+    { text: "Insert profits column", prompt: "Insert a column of profits" },
+  ];
 
   return (
     <div className={styles.root}>
@@ -514,30 +468,17 @@ const App: React.FC<AppProps> = () => {
       </div>
 
       <div className={styles.recommendedPrompts}>
-        <Button
-          appearance="outline"
-          size="small"
-          onClick={() => handlePromptClick("Sort the table by sales in descending order")}
-          disabled={isProcessing}
-        >
-          Sort table by sales
-        </Button>
-        <Button
-          appearance="outline"
-          size="small"
-          onClick={() => handlePromptClick("Create a scatter plot of sales and costs")}
-          disabled={isProcessing}
-        >
-          Create scatter plot
-        </Button>
-        <Button
-          appearance="outline"
-          size="small"
-          onClick={() => handlePromptClick("Insert a column of profits")}
-          disabled={isProcessing}
-        >
-          Insert profits column
-        </Button>
+        {promptOptions.map((option, index) => (
+          <Button
+            key={index}
+            appearance="outline"
+            size="small"
+            onClick={() => handlePromptClick(option.prompt)}
+            disabled={isProcessing}
+          >
+            {option.text}
+          </Button>
+        ))}
       </div>
 
       <div className={styles.inputContainer}>
